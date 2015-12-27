@@ -1,0 +1,507 @@
+<?php
+
+/**
+ * @file
+ * Defines a field type for referencing one node from another.
+ */
+
+/**
+ * Implements hook_help().
+ *
+ * Describe the purpose and usage  of this module.
+ */
+function dependent_node_reference_help($path, $arg) {
+  if ($path == 'admin/help#dependent_node_reference') {
+    return t('<p>This module is an extension to node_reference and term_reference
+     modules. The idea of the module comes with the need of providing support to
+     fetch values of dependent field on selection of dependee field.</p><p>
+     Steps to configure:</p><p>1. Edit node or term reference field.</br>2. Select
+     another node or term reference field name from "Reference field that can
+     control the values of current field" dropdown.</p><p>3. Save settings</p>');
+  }
+}
+
+/**
+ * Implements hook_field_info_alter().
+ */
+function dependent_node_reference_field_info_alter(&$info) {
+  foreach ($info as $field_type => $field_type_info) {
+    if ($field_type == 'node_reference') {
+      $info[$field_type]['settings'] += array(
+        'dependent_reference' => 'default value',
+      );
+    }
+  }
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function dependent_node_reference_form_field_ui_field_edit_form_alter(&$form, &$form_state, $form_id) {
+  if (dependent_node_reference_is_reference_field($form)) {
+    $default_value = !empty($form['#field']['settings']['dependent_reference']) ? $form['#field']['settings']['dependent_reference'] : '';
+    $form['field']['settings']['dependent_reference'] = array(
+      '#type' => 'select',
+      '#title' => t('Reference field that can control the values of current field.'),
+      '#default_value' => $default_value,
+      '#options' => array_map('check_plain', dependent_node_reference_get_references($form['instance']['bundle']['#value'])),
+      '#description' => t('Please make sure that both reference field and current field is associated with each other by node_reference or term_reference.'),
+    );
+    $form['#validate'][] = 'dependent_node_reference_validate';
+  }
+}
+
+
+/**
+ * Function to validate selected reference is associated with the current field.
+ */
+function dependent_node_reference_validate($form, &$form_state) {
+  $validate = FALSE;
+  $dependent_reference = $form_state['values']['field']['settings']['dependent_reference'];
+  if (!empty($dependent_reference)) {
+    $return_types = dependent_node_reference_return_types($form['#field']['field_name'], $dependent_reference);
+    if (!empty($return_types)) {
+      $dependee_field_reference = $return_types['dependee_field_reference'];
+      $dependent_field_value = $return_types['dependent_field_value'];
+      $dependent_field_type = $return_types['dependent_field_type'];
+
+      $validate = dependent_node_reference_validate_reference($dependee_field_reference, $dependent_field_value);
+      if (empty($validate)) {
+        $message = t('Invalid Selection. "@dependent" is not referenced into "@current" as @field_type', array(
+          '@dependent' => implode('", "', $dependee_field_reference),
+          '@current' => implode('", "', $dependent_field_value),
+          '@field_type' => $dependent_field_type,
+        ));
+        form_set_error('settings][dependent_reference', $message);
+      }
+    }
+  }
+}
+
+/**
+ * Function to return dependent and dependee types.
+ */
+function dependent_node_reference_return_types($dependent, $dependee) {
+  if (empty($dependent) || empty($dependee)) {
+    return array();
+  }
+  $dependee_field = field_info_field($dependee);
+  $dependee_field_type = $dependee_field['type'];
+  if ($dependee_field_type == 'taxonomy_term_reference') {
+    $dependee_field_reference = array($dependee_field['settings']['allowed_values'][0]['vocabulary']);
+  }
+  if ($dependee_field_type == 'node_reference') {
+    $dependee_field_reference = array_filter($dependee_field['settings']['referenceable_types'], 'dependent_node_reference_array_filter');
+  }
+
+  $dependent_field = field_info_field($dependent);
+  $dependent_field_type = $dependent_field['type'];
+  if ($dependent_field_type == 'taxonomy_term_reference') {
+    $dependent_field_value = array($dependent_field['settings']['allowed_values'][0]['vocabulary']);
+  }
+  else {
+    $dependent_field_value = array_filter($dependent_field['settings']['referenceable_types'], 'dependent_node_reference_array_filter');
+  }
+
+  return array(
+    'dependee_field_reference' => $dependee_field_reference,
+    'dependent_field_value' => $dependent_field_value,
+    'dependent_field_type' => $dependent_field_type,
+    'dependee_field_type' => $dependee_field_type,
+  );
+}
+
+
+/**
+ * Function to validate reference.
+ */
+function dependent_node_reference_validate_reference($dependee_field_reference, $dependent_field_value) {
+  $valid = NULL;
+  $dependee_type = array();
+  $fields = field_info_fields();
+  foreach ($fields as $key => $value) {
+    if ($value['type'] == 'taxonomy_term_reference') {
+      $dependee_type = array($value['settings']['allowed_values'][0]['vocabulary']);
+      $dependee_into = !empty($value['bundles']['taxonomy_term']) ? $value['bundles']['taxonomy_term'][0] : $value['bundles']['node'][0];
+    }
+    if ($value['type'] == 'node_reference') {
+      $dependee_type = array_filter($value['settings']['referenceable_types'], 'dependent_node_reference_array_filter');
+      $dependee_into = !empty($value['bundles']['taxonomy_term']) ? $value['bundles']['taxonomy_term'][0] : $value['bundles']['node'][0];
+    }
+    if (!empty($dependee_type)) {
+      if (array_intersect_assoc($dependee_type, $dependee_field_reference) && in_array($dependee_into, $dependent_field_value)) {
+        $valid[$key] = $value['type'];
+        break;
+      }
+    }
+  }
+  return $valid;
+}
+
+/**
+ * Function to filter array.
+ */
+function dependent_node_reference_array_filter($var) {
+  return !is_numeric($var);
+}
+
+/**
+ * Implements hook_form_FORM_ID_alter().
+ */
+function dependent_node_reference_is_reference_field($form) {
+  $types = array('node_reference', 'taxonomy_term_reference');
+  if (!empty($form['#field']['type'])) {
+    return in_array($form['#field']['type'], $types);
+  }
+  else {
+    return FALSE;
+  }
+}
+
+/**
+ * Function to get the taxonomy_term_reference or node_reference fields list.
+ */
+function dependent_node_reference_get_references($bundle) {
+  $fields = field_info_instances('node', $bundle);
+  if (empty($fields)) {
+    $fields = field_info_instances('taxonomy_term', $bundle);
+  }
+  $references = array('' => 'None');
+  if (!empty($fields)) {
+    foreach ($fields as $key => $value) {
+      if (!empty($value['display']['default']['type'])) {
+        if (preg_match('/\_reference\_/', $value['display']['default']['type'])) {
+          $references[$key] = $value['label'];
+        }
+      }
+    }
+  }
+  return $references;
+}
+
+/**
+ * Function to get reference fields.
+ */
+function dependent_node_reference_get_cck_fields($form) {
+  $fields = array();
+  foreach ($form as $key => $value) {
+    if (preg_match('/field\_/', $key)) {
+      $fields[$key] = field_info_field($key);
+    }
+  }
+  return $fields;
+}
+
+/**
+ * Function to get reference fields.
+ */
+function dependent_node_reference_get_dependee_fields($fields) {
+  $dependee_fields = array();
+  foreach ($fields as $key => $field) {
+    if (!empty($field['settings']['dependent_reference'])) {
+      $dependee_fields[$key] = $field['settings']['dependent_reference'];
+    }
+  }
+  return $dependee_fields;
+}
+
+/**
+ * Function to get term vocabulary.
+ */
+function dependent_node_reference_get_term_vocabulary($field_name) {
+  if (empty($field_name)) {
+    return NULL;
+  }
+  $field = field_info_field($field_name);
+  if (!empty($field['settings']['allowed_values'][0]['vocabulary'])) {
+    return $field['settings']['allowed_values'][0]['vocabulary'];
+  }
+  else {
+    return NULL;
+  }
+}
+
+/**
+ * Function to get node referenceable types.
+ */
+function dependent_node_reference_get_node_referenceable_types($field_name) {
+  if (empty($field_name)) {
+    return NULL;
+  }
+  $field = field_info_field($field_name);
+  if (!empty($field['settings']['referenceable_types'])) {
+    return array_filter($field['settings']['referenceable_types'], 'dependent_node_reference_array_filter');
+  }
+  else {
+    return NULL;
+  }
+}
+
+/**
+ * Implements hook_form_alter().
+ */
+function dependent_node_reference_form_alter(&$form, &$form_state, $form_id) {
+  $cck_fields = dependent_node_reference_get_cck_fields($form);
+  $dependee_fields = dependent_node_reference_get_dependee_fields($cck_fields);
+  if (!empty($dependee_fields)) {
+    foreach ($dependee_fields as $dependent => $dependee) {
+      $selected = array();
+      if (!empty($form_state['values']) && !empty($form_state['values'][$dependee])) {
+        if (!empty($form_state['values'][$dependee][LANGUAGE_NONE][0]['tid'])) {
+          foreach ($form_state['values'][$dependee][LANGUAGE_NONE] as $field_value) {
+            $selected[] = $field_value['tid'];
+          }
+        }
+        if (!empty($form_state['values'][$dependee][LANGUAGE_NONE][0]['nid'])) {
+          foreach ($form_state['values'][$dependee][LANGUAGE_NONE] as $field_value) {
+            $selected[] = $field_value['nid'];
+          }
+        }
+      }
+      else {
+        if (!empty($form[$dependee][LANGUAGE_NONE]['#default_value'])) {
+          $selected = $form[$dependee][LANGUAGE_NONE]['#default_value'];
+        }
+      }
+
+      $refill_with = dependent_node_reference_get_term_vocabulary($dependent);
+      if (!empty($refill_with)) {
+        $refill_type = 'vocabulary';
+      }
+      else {
+        $refill_with = dependent_node_reference_get_node_referenceable_types($dependent);
+        if (!empty($refill_with)) {
+          $refill_type = 'node';
+        }
+      }
+
+      $return_types = dependent_node_reference_return_types($dependent, $dependee);
+      $dependee_field_reference = $return_types['dependee_field_reference'];
+      $dependent_field_value = $return_types['dependent_field_value'];
+      $cond_field = dependent_node_reference_validate_reference($dependee_field_reference, $dependent_field_value);
+
+      $form[$dependent] += array(
+        '#prefix' => '<div id="' . $dependent . '-replace">',
+        '#suffix' => '</div>',
+      );
+      $form[$dependee][LANGUAGE_NONE] += array(
+        '#ajax' => array(
+          'path' => 'custom_ajax_callback/' . $dependent . '/' . $dependee,
+          'wrapper' => $dependent . '-replace',
+          'method' => 'replace',
+        ),
+        '#default_value' => $selected,
+      );
+
+      $form[$dependent][LANGUAGE_NONE]['#options'] = dependent_node_reference_get_selected_options($refill_type, $refill_with, $cond_field, $form[$dependee][LANGUAGE_NONE]['#options'], $selected);
+    }
+  }
+}
+
+/**
+ * Implements hook_menu().
+ */
+function dependent_node_reference_menu() {
+  $items['custom_ajax_callback'] = array(
+    'title' => 'Custom ajax callback',
+    'page callback' => 'dependent_node_reference_custom_ajax_form_callback',
+    'page arguments' => array(
+      'dependent' => '',
+      'dependee' => '',
+    ),
+    'delivery callback' => 'ajax_deliver',
+    'access arguments' => array('access content'),
+    'type' => MENU_CALLBACK,
+  );
+  return $items;
+}
+
+
+/**
+ * Ajax menu callback function.
+ *
+ * This section checks whether the $_POST variable contains illegal
+ * values for select_1 which causes the error. The multiselect should
+ * return the selected options in array format i.e in the current example
+ * when both one and two have been selected, the $_POST['select_1']
+ * should be an array in the following format
+ * $_POST[select_1] => Array
+ *       (
+ *           [0] => 1
+ *           [1] => 2
+ *       )
+ * but the $_POST['select_1'] contains
+ * $_POST[select_1] => Array
+ *       (
+ *           [0] => 1,2
+ *       )
+ * This actually causes the error. So a logic has been implemented to
+ * re-build $_POST[select_1] in correct format
+ */
+function dependent_node_reference_custom_ajax_form_callback() {
+  if (!arg(1) && !arg(2)) {
+    return NULL;
+  }
+  $dependent = check_plain(arg(1));
+  $dependee = check_plain(arg(2));
+  if (empty($_POST[$dependee][LANGUAGE_NONE][0])) {
+    list($form, $form_state) = ajax_get_form();
+    drupal_process_form($form['#form_id'], $form, $form_state);
+    return $form[$dependent];
+  }
+  $field_dependee = explode(",", $_POST[$dependee][LANGUAGE_NONE][0]);
+  if (count($field_dependee) > 1) {
+    unset($_POST[$dependee]);
+    $_POST[$dependee][LANGUAGE_NONE] = $field_dependee;
+  }
+  list($form, $form_state) = ajax_get_form();
+  drupal_process_form($form['#form_id'], $form, $form_state);
+  if (!empty($form_state['triggering_element'])) {
+    $path = $form_state['triggering_element']['#ajax']['path'];
+  }
+  if (!empty($path)) {
+    // Call to generate the second dropdown.
+    return dependent_node_reference_process_callback($form, $form_state, $dependent);
+  }
+}
+
+
+/**
+ * Custom ajax callback on change.
+ */
+function dependent_node_reference_process_callback($form, $form_state, $dependent) {
+  return $form[$dependent];
+}
+
+/**
+ * Function to generate matching options.
+ */
+function dependent_node_reference_get_selected_options($fill_type, $fill_with, $cond_field, $options, $selected) {
+  if (empty($selected)) {
+    return array();
+  }
+
+  $options_list = array();
+  $node_query = new EntityFieldQuery();
+
+  $field = key($cond_field);
+  switch ($cond_field[key($cond_field)]) {
+    case 'taxonomy_term_reference':
+      $column = 'tid';
+      break;
+
+    case 'node_reference':
+      $column = 'nid';
+      break;
+
+  }
+
+  switch ($fill_type) {
+    case 'node':
+
+      $result = $node_query->entityCondition('entity_type', 'node')
+      ->entityCondition('bundle', key($fill_with))
+      ->fieldCondition($field, $column, $selected, 'IN')
+      ->execute();
+
+      $options_list = dependent_node_reference_node_options($result);
+      break;
+
+    case 'vocabulary':
+      $result = $node_query->entityCondition('entity_type', 'taxonomy_term')
+      ->entityCondition('bundle', $fill_with)
+      ->fieldCondition($field, $column, $selected, 'IN')
+      ->execute();
+
+      $options_list = dependent_node_reference_term_options($result);
+      break;
+
+  }
+
+  return $options_list;
+}
+
+/**
+ * Function to get node options.
+ */
+function dependent_node_reference_node_options($result) {
+  $options_list = array();
+  if (!empty($result['node'])) {
+    $nodes = node_load_multiple(array_keys($result['node']));
+    foreach ($nodes as $node) {
+      $options_list[$node->nid] = entity_label('node', $node);
+    }
+  }
+  return $options_list;
+}
+
+/**
+ * Function to get term options.
+ */
+function dependent_node_reference_term_options($result) {
+  $options_list = array();
+  if (!empty($result['taxonomy_term'])) {
+    $terms = taxonomy_term_load_multiple(array_keys($result['taxonomy_term']));
+    foreach ($terms as $term) {
+      $options_list[$term->tid] = entity_label('taxonomy_term', $term);
+    }
+  }
+  return $options_list;
+}
+
+/**
+ * Function to clean up string.
+ */
+function dependent_node_reference_cleanup($data) {
+  return trim(preg_replace("/\s+/", " ", strip_tags($data)));
+}
+
+/**
+ * Function to refill.
+ */
+function dependent_node_reference_refill($refill_type, $refill_with) {
+  if (empty($refill_type) || empty($refill_with)) {
+    return array();
+  }
+  switch ($refill_type) {
+    case 'vocabulary':
+      $terms = taxonomy_get_tree(taxonomy_vocabulary_machine_name_load($refill_with)->vid);
+      $options = dependent_node_reference_terms($terms);
+      break;
+
+    case 'node':
+      $nodes = node_load_multiple(array(), array('type' => $refill_with));
+      $options = dependent_node_reference_nodes($nodes);
+      break;
+
+  }
+  return $options;
+}
+
+/**
+ * Function to return terms to refill.
+ */
+function dependent_node_reference_terms($arr) {
+  if (empty($arr)) {
+    return array();
+  }
+  $options = array();
+  foreach ($arr as $term) {
+    $options[$term->tid] = $term->name;
+  }
+  return $options;
+}
+
+/**
+ * Function to return nodes to refill.
+ */
+function dependent_node_reference_nodes($arr) {
+  if (empty($arr)) {
+    return array();
+  }
+  $options = array();
+  foreach ($arr as $node) {
+    $options[$node->nid] = $node->title;
+  }
+  return $options;
+}

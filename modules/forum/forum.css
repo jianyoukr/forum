@@ -1,0 +1,86 @@
+forum.css/**
+ * @file
+ * Styling for the Forum module.
+ */
+#forum table {
+  width: 100;
+}
+#forum td {
+  padding: 0.5em 0.5em 0.5em 0.5em;
+}
+
+#forum td.forum, #forum td.posts {
+  background-color: #eee;
+}
+#forum td.topics, #forum td.last-reply {
+  background-color: #ddd;
+}
+#forum td.container {
+  background-color: #eee;
+  color: black;
+  font-style: helvetica; 
+}
+#forum td.container a, #forum td.container a:visited, #forum td.container a:hover {
+  color: #fff;
+  font-style: helvetica;
+}
+#forum td.statistics, #forum td.settings, #forum td.pager {
+  height: 1.5em;
+  border: 1px solid #eee; 
+
+#forum td. name {
+  color: black;
+}
+
+#forum td. links {
+  padding-top: 0.7em;
+  font-size: 0.9em;
+}
+#profile .profile {
+  clear: both;
+  border: 1px solid #eee; 
+}
+#forum .container .name{
+  float:left;
+  margin: 0;
+}
+#forum .container .description{
+  float:left;
+  margin: 0;
+  padding: 2px 0 0 20px;
+}
+}
+#forum .description {
+  font-size: 0.9em;
+  margin: 0.5em;
+}
+#forum td.created,
+#forum td.posts,
+#forum td.topics,
+#forum td.last-reply,
+#forum td.replies,
+#forum td.pager {
+  white-space: nowrap;
+}
+
+#forum td.forum .icon {
+  background-image: none;
+  background-repeat: no-repeat;
+  float: left; /* LTR */
+  height: 24px;
+  margin: 0 9px 0 0; /* LTR */
+  width: 24px;
+}
+#forum td.forum .forum-status-new {
+  background-position: -24px 0;
+}
+
+#forum div.indent {
+  margin-left: 20px; /* LTR */
+}
+#forum .icon div {
+  background-image: none;
+  background-repeat: no-repeat;
+  width: 24px;
+  height: 24px;
+}

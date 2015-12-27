@@ -1,0 +1,4 @@
+1450403227: /home3/jianrewc/public_html/dforum/ssv3_installer_payload-Ts7Ks5qRGn.php startup
+[24-Dec-2015 07:50:17] PHP Fatal error:  require_once() [<a href='function.require'>function.require</a>]: Failed opening required '__DIR__/xautoload.module' (include_path='.:/usr/lib64/php:/usr/share/pear') in /home3/jianrewc/public_html/dforum/sites/all/modules/xautoload/xautoload.install on line 5
+[24-Dec-2015 07:56:36] PHP Warning:  Unexpected character in input:  '\' (ASCII=92) state=1 in /home3/jianrewc/public_html/dforum/sites/all/modules/registry_autoload/registry_autoload.module on line 306
+[24-Dec-2015 07:58:03] PHP Fatal error:  require_once() [<a href='function.require'>function.require</a>]: Failed opening required '__DIR__/xautoload.module' (include_path='.:/usr/lib64/php:/usr/share/pear') in /home3/jianrewc/public_html/dforum/sites/all/modules/xautoload/xautoload.install on line 5

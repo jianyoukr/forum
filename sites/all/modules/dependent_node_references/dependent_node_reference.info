@@ -1,0 +1,16 @@
+name = Dependent Node Reference
+description = Defines a field type dependent on referencing one/more node from another.
+package = Fields
+core = 7.x
+dependencies[] = field
+dependencies[] = references
+dependencies[] = options
+dependencies[] = node_reference
+dependencies[] = taxonomy
+
+; Information added by Drupal.org packaging script on 2014-11-19
+version = "7.x-1.x-dev"
+core = "7.x"
+project = "dependent_node_references"
+datestamp = "1416375013"
+
